@@ -1,5 +1,5 @@
 import { NextResponse, NextRequest } from 'next/server';
-import { db } from '@/lib/db';
+import { db, safeQuery } from '@/lib/db';
 import bcrypt from 'bcrypt';
 import { SignJWT } from 'jose';
 
@@ -44,11 +44,16 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Email and password are required.' }, { status: 400 });
     }
 
-    let user: UserFromDb | undefined;
+    let user: UserFromDb | null = null;
     try {
-      const stmt = db.prepare('SELECT id, name, email, password, role, avatarUrl, joinedDate, isTwoFactorEnabled, twoFactorSecret FROM users WHERE email = ?');
-      user = stmt.get(email) as UserFromDb | undefined;
-      
+      // Use the safer query function with proper error handling
+      user = safeQuery<UserFromDb>(
+        db, 
+        'SELECT id, name, email, password, role, avatarUrl, joinedDate, isTwoFactorEnabled, twoFactorSecret FROM users WHERE email = ?', 
+        [email],
+        null
+      );
+
       if (!user) {
         console.warn(`Login attempt failed: No user found with email ${email}`);
         return NextResponse.json({ error: 'Invalid email or password.' }, { status: 401 });
@@ -60,7 +65,10 @@ export async function POST(request: Request) {
       }
     } catch (dbError) {
       console.error('Database error during login:', dbError);
-      return NextResponse.json({ error: 'Server error during authentication.' }, { status: 500 });
+      return NextResponse.json({ 
+        error: 'Server error during authentication.', 
+        details: process.env.NODE_ENV === 'development' ? String(dbError) : undefined 
+      }, { status: 500 });
     }
 
     const isPasswordValid = await bcrypt.compare(password, user.password);

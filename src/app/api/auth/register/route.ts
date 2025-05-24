@@ -1,6 +1,5 @@
-
 import { NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { db, safeQuery, safeQueryAll, safeExecute } from '@/lib/db';
 import bcrypt from 'bcrypt';
 import { randomUUID } from 'crypto';
 import type { UserRole } from '@/app/admin/page';
@@ -27,8 +26,8 @@ export async function POST(request: Request) {
 
     const { name, email, password } = validationResult.data;
 
-    const existingUserStmt = db.prepare('SELECT id FROM users WHERE email = ?');
-    const existingUser = existingUserStmt.get(email);
+    // Check if user already exists using safe query
+    const existingUser = safeQuery(db, 'SELECT id FROM users WHERE email = ?', [email]);
 
     if (existingUser) {
       return NextResponse.json({ error: 'Email address is already in use.' }, { status: 409 });
@@ -38,37 +37,36 @@ export async function POST(request: Request) {
     const newUserId = randomUUID();
     const now = new Date().toISOString();
 
-    // Determine role
+    // Determine role with better error handling
     let role: UserRole = 'Viewer'; // Default role
     try {
-      const userCountStmt = db.prepare('SELECT COUNT(*) as count FROM users');
-      const result = userCountStmt.get();
-      
-      if (result && typeof result === 'object' && 'count' in result) {
-        const count = (result as { count: number }).count;
-        role = count === 0 ? 'Admin' : 'Viewer';
-      } else {
-        console.warn('Could not determine user count, defaulting to Viewer role');
-      }
+      // Use safe query for user count
+      const result = safeQuery<{ count: number }>(db, 'SELECT COUNT(*) as count FROM users', [], { count: 0 });
+      role = result?.count === 0 ? 'Admin' : 'Viewer';
+      console.log(`Determined role for new user: ${role} (user count: ${result?.count})`);
     } catch (error) {
       console.error('Error getting user count:', error);
-      // If we can't get a count, just make the first registered user an Admin
-      // This is a fallback for a fresh database
+      // If we can't get a count, fall back to checking if any users exist
       try {
-        const checkAnyUserStmt = db.prepare('SELECT 1 FROM users LIMIT 1');
-        const anyUser = checkAnyUserStmt.get();
+        const anyUser = safeQuery(db, 'SELECT 1 FROM users LIMIT 1');
         role = anyUser ? 'Viewer' : 'Admin';
+        console.log(`Fallback role determination: ${role}`);
       } catch (innerError) {
         console.error('Error checking for any users:', innerError);
         // Keep the default 'Viewer' role
       }
     }
 
-    const stmt = db.prepare(`
+    // Use the safer execute function for inserting the new user
+    const result = safeExecute(db, `
       INSERT INTO users (id, name, email, password, role, joinedDate, updatedAt)
       VALUES (?, ?, ?, ?, ?, ?, ?)
-    `);
-    stmt.run(newUserId, name, email, hashedPassword, role, now, now);
+    `, [newUserId, name, email, hashedPassword, role, now, now]);
+
+    if (result.changes === 0) {
+      console.error('Failed to insert new user - no rows affected');
+      return NextResponse.json({ error: 'Failed to register user. Please try again later.' }, { status: 500 });
+    }
 
     // Do not return password or sensitive data in the response
     const newUserResponse = {
@@ -79,6 +77,7 @@ export async function POST(request: Request) {
       joinedDate: now,
     };
     
+    console.log(`User registered successfully: ${email} with role ${role}`);
     return NextResponse.json(newUserResponse, { status: 201 });
   } catch (error: any) {
     console.error('Registration failed:', error);
