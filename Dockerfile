@@ -10,22 +10,30 @@ RUN apt-get update && apt-get install -y \
     python3 \
     make \
     g++ \
+    tree \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy entire project first (needed for postinstall script)
+# Copy entire project
 COPY . .
 
-# Install dependencies
-RUN npm install --production=false
+# Debug: Show project structure
+RUN tree /app/src/components
 
-# Copy application source
-COPY . .
+# Install dependencies with better error output
+RUN NODE_ENV=development npm install --production=false --verbose
+
+# Verify module resolution
+RUN node -e "try { require.resolve('@/components/ui/button'); console.log('Module resolution successful!'); } catch(e) { console.error('Module resolution failed:', e); process.exit(1); }"
 
 # Set environment variables for build
 ENV NODE_ENV=production
 
-# Build the Next.js application
-RUN npm run build
+# Build the Next.js application with better error output
+RUN npm run build || (echo "Build failed. Checking component existence..." && \
+    ls -la /app/src/components/ui/ && \
+    echo "Checking module resolution..." && \
+    node -e "console.log(require.resolve('@/components/ui/button'))" && \
+    exit 1)
 
 # Prune development dependencies (optional, as standalone output is quite lean)
 # RUN npm prune --production

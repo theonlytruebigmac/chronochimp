@@ -1,5 +1,6 @@
 import type { NextConfig } from 'next';
 import type { Configuration as WebpackConfig } from 'webpack';
+import path from 'path';
 
 const nextConfig: NextConfig = {
   /* config options here */
@@ -9,6 +10,16 @@ const nextConfig: NextConfig = {
   },
   eslint: {
     ignoreDuringBuilds: true,
+  },
+  webpack: (config: WebpackConfig) => {
+    config.resolve = {
+      ...config.resolve,
+      alias: {
+        ...config.resolve?.alias,
+        '@': path.join(__dirname, 'src'),
+      },
+    };
+    return config;
   },
   
   // Trust proxy headers when behind Traefik
