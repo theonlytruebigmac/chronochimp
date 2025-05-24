@@ -63,19 +63,24 @@ export async function POST(request: Request) {
     db.exec(createUsersTable);
 
     // Determine role with better error handling
-    let role: UserRole = 'Viewer'; // Default role
+    let role: UserRole;
     try {
-      // Use a simpler COUNT query that returns just a number
-      const stmt = db.prepare('SELECT COUNT(*) FROM users');
-      const result = stmt.get();
-      // SQLite returns the count as the first column
-      const count = result ? Object.values(result)[0] as number : 0;
-      role = count === 0 ? 'Admin' : 'Viewer';
-      console.log(`Determined role for new user: ${role} (user count: ${count})`);
+      // First try to get any existing user
+      const existingUserCheck = db.prepare('SELECT 1 FROM users LIMIT 1').get();
+      role = existingUserCheck ? 'Viewer' : 'Admin';
+      console.log(`Determined role for new user: ${role} (first user check: ${!existingUserCheck})`);
     } catch (error) {
-      console.error('Error getting user count:', error);
-      role = 'Admin'; // If we can't check, assume this is the first user
-      console.log('Error checking user count, defaulting to Admin role');
+      console.error('Error checking for existing users:', error);
+      // Try an alternative approach - count query
+      try {
+        const countResult = db.prepare('SELECT COUNT(*) as count FROM users').get() as { count: number };
+        role = countResult?.count > 0 ? 'Viewer' : 'Admin';
+        console.log(`Fallback role determination: ${role} (count: ${countResult?.count})`);
+      } catch (innerError) {
+        console.error('Fallback count check failed:', innerError);
+        role = 'Viewer'; // Default to Viewer if all checks fail
+        console.log('All role checks failed, defaulting to Viewer role for safety');
+      }
     }
 
     // Insert the new user
