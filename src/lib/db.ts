@@ -3,14 +3,72 @@ import type { Database as DatabaseType } from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
 
+// Helper to safely parse JSON
+export function safeJSONParse<T>(jsonString: string | null | undefined, defaultValue: T): T {
+  if (jsonString === null || jsonString === undefined) {
+    return defaultValue;
+  }
+  try {
+    return JSON.parse(jsonString);
+  } catch (e) {
+    return defaultValue;
+  }
+}
+
+// Helper for safe database operations with proper cleanup
+export function withDb<T>(operation: (db: DatabaseType) => T): T {
+  const stmt = {
+    finalized: false,
+    handle: null as any,
+    finalize() {
+      if (!this.finalized && this.handle) {
+        this.handle.finalize();
+        this.finalized = true;
+      }
+    }
+  };
+
+  try {
+    return operation(db);
+  } catch (error) {
+    console.error('Database operation failed:', error);
+    throw error;
+  } finally {
+    stmt.finalize();
+  }
+}
+
+// Check if we should skip database operations (during build)
+const shouldSkipDb = process.env.NEXT_BUILD_SKIP_DB === 'true' || process.env.IS_BUILD_ENVIRONMENT === 'true';
+
+// Create a mock database for build time
+class MockDatabase {
+  prepare() {
+    return {
+      all: () => [],
+      get: () => null,
+      run: () => ({ changes: 0 }),
+    };
+  }
+  
+  exec() {}
+  function() {}
+  close() {}
+}
+
 const dataDir = path.join(process.cwd(), '.data');
-if (!fs.existsSync(dataDir)) {
+if (!fs.existsSync(dataDir) && !shouldSkipDb) {
   fs.mkdirSync(dataDir, { recursive: true });
 }
 
 const dbPath = path.join(dataDir, 'chrono.db');
 
 function initDatabase() {
+  if (shouldSkipDb) {
+    console.log('Skipping database initialization during build...');
+    return new MockDatabase() as unknown as DatabaseType;
+  }
+  
   const db = new Database(dbPath);
 
   // Add functions to ensure proper UUID handling
@@ -31,51 +89,53 @@ function initDatabase() {
 
 export const db = initDatabase();
 
-// Create tasks table if it doesn't exist
-const createTasksTable = `
-  CREATE TABLE IF NOT EXISTS tasks (
-    id CHAR(36) PRIMARY KEY CHECK (ensure_uuid(id) IS NOT NULL),
-    userId CHAR(36) NOT NULL CHECK (ensure_uuid(userId) IS NOT NULL),
-    title TEXT NOT NULL,
-    description TEXT,
-    status TEXT NOT NULL DEFAULT 'Backlog',
-    priority TEXT DEFAULT 'medium',
-    dueDate TEXT,
-    startDate TEXT,
-    tags TEXT, /* JSON string array */
-    subtasks TEXT, /* JSON string array of Subtask objects */
-    timeLogs TEXT, /* JSON string array of TimeLog objects */
-    notes TEXT,
-    createdAt TEXT DEFAULT (STRFTIME('%Y-%m-%dT%H:%M:%fZ', 'now')) NOT NULL,
-    updatedAt TEXT DEFAULT (STRFTIME('%Y-%m-%dT%H:%M:%fZ', 'now')) NOT NULL,
-    FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
-  );
-`;
-db.exec(createTasksTable);
+// Skip all table creation during build
+if (!shouldSkipDb) {
+  // Create tasks table if it doesn't exist
+  const createTasksTable = `
+    CREATE TABLE IF NOT EXISTS tasks (
+      id CHAR(36) PRIMARY KEY CHECK (ensure_uuid(id) IS NOT NULL),
+      userId CHAR(36) NOT NULL CHECK (ensure_uuid(userId) IS NOT NULL),
+      title TEXT NOT NULL,
+      description TEXT,
+      status TEXT NOT NULL DEFAULT 'Backlog',
+      priority TEXT DEFAULT 'medium',
+      dueDate TEXT,
+      startDate TEXT,
+      tags TEXT, /* JSON string array */
+      subtasks TEXT, /* JSON string array of Subtask objects */
+      timeLogs TEXT, /* JSON string array of TimeLog objects */
+      notes TEXT,
+      createdAt TEXT DEFAULT (STRFTIME('%Y-%m-%dT%H:%M:%fZ', 'now')) NOT NULL,
+      updatedAt TEXT DEFAULT (STRFTIME('%Y-%m-%dT%H:%M:%fZ', 'now')) NOT NULL,
+      FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
+    );
+  `;
+  db.exec(createTasksTable);
 
 // Add userId column to tasks table if it doesn't exist (for existing databases)
-try {
-  const stmt = db.prepare(`PRAGMA table_info(tasks)`);
-  const existingColumns = stmt.all() as { name: string }[];
-  if (!existingColumns.some(ec => ec.name === 'userId')) {
-    // console.log(`Adding 'userId' column to 'tasks' table.`); // Removed for cleaner logs
-    db.exec(`ALTER TABLE tasks ADD COLUMN userId TEXT`);
+  try {
+    const stmt = db.prepare(`PRAGMA table_info(tasks)`);
+    const existingColumns = stmt.all() as { name: string }[];
+    if (!existingColumns.some(ec => ec.name === 'userId')) {
+      // console.log(`Adding 'userId' column to 'tasks' table.`); // Removed for cleaner logs
+      db.exec(`ALTER TABLE tasks ADD COLUMN userId TEXT`);
+    }
+  } catch (error) {
+    console.warn(`Could not check/add column userId to tasks table:`, error);
   }
-} catch (error) {
-  console.warn(`Could not check/add column userId to tasks table:`, error);
-}
 
 
-// Create a trigger to update the updatedAt timestamp for tasks
-const createTasksUpdatedAtTrigger = `
-  CREATE TRIGGER IF NOT EXISTS update_tasks_updatedAt
-  AFTER UPDATE ON tasks
-  FOR EACH ROW
-  BEGIN
-    UPDATE tasks SET updatedAt = (STRFTIME('%Y-%m-%dT%H:%M:%fZ', 'now')) WHERE id = OLD.id;
-  END;
-`;
-db.exec(createTasksUpdatedAtTrigger);
+  // Create a trigger to update the updatedAt timestamp for tasks
+  const createTasksUpdatedAtTrigger = `
+    CREATE TRIGGER IF NOT EXISTS update_tasks_updatedAt
+    AFTER UPDATE ON tasks
+    FOR EACH ROW
+    BEGIN
+      UPDATE tasks SET updatedAt = (STRFTIME('%Y-%m-%dT%H:%M:%fZ', 'now')) WHERE id = OLD.id;
+    END;
+  `;
+  db.exec(createTasksUpdatedAtTrigger);
 
 // Create users table
 const createUsersTable = `
@@ -168,6 +228,24 @@ const createApiKeysTable = `
   CREATE INDEX IF NOT EXISTS idx_api_keys_status ON api_keys(revoked, expiresAt);
 `;
 db.exec(createApiKeysTable);
+
+// Check if keyPrefix column exists in api_keys table and add it if needed
+try {
+  const apiKeysColumnsStmt = db.prepare(`PRAGMA table_info(api_keys)`);
+  const apiKeysColumns = apiKeysColumnsStmt.all() as { name: string }[];
+  
+  if (!apiKeysColumns.some(col => col.name === 'keyPrefix')) {
+    console.log(`Adding 'keyPrefix' column to 'api_keys' table.`);
+    db.exec(`ALTER TABLE api_keys ADD COLUMN keyPrefix TEXT`);
+  }
+  
+  if (!apiKeysColumns.some(col => col.name === 'last4')) {
+    console.log(`Adding 'last4' column to 'api_keys' table.`);
+    db.exec(`ALTER TABLE api_keys ADD COLUMN last4 TEXT`);
+  }
+} catch (error) {
+  console.warn(`Could not check/add columns to api_keys table:`, error);
+}
 
 // Add keyPrefix column if it doesn't exist
 try {
