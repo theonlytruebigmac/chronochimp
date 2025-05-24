@@ -33,7 +33,7 @@ const nextConfig: NextConfig = {
   // Configure for both development and production environments
   serverRuntimeConfig: {
     // Will only be available on the server side
-    trustProxy: process.env.NEXT_PUBLIC_TRUST_PROXY === 'true',
+    trustProxy: true, // Always trust proxy in production
   },
   publicRuntimeConfig: {
     // Will be available on both server and client

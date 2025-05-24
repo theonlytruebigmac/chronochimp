@@ -149,6 +149,7 @@ const createApiKeysTable = `
     userId TEXT NOT NULL,
     name TEXT NOT NULL,
     hashedKey TEXT NOT NULL UNIQUE,
+    keyPrefix TEXT NOT NULL,
     last4 TEXT NOT NULL,
     createdAt TEXT DEFAULT (STRFTIME('%Y-%m-%dT%H:%M:%fZ', 'now')),
     expiresAt TEXT,
@@ -159,12 +160,63 @@ const createApiKeysTable = `
 
   -- Create index on hashedKey for fast lookups during validation
   CREATE INDEX IF NOT EXISTS idx_api_keys_hashedKey ON api_keys(hashedKey);
+  -- Create index on keyPrefix for fast lookups during validation
+  CREATE INDEX IF NOT EXISTS idx_api_keys_keyPrefix ON api_keys(keyPrefix);
   -- Create index on userId for fast key listing
   CREATE INDEX IF NOT EXISTS idx_api_keys_userId ON api_keys(userId);
   -- Create index on revoked and expiresAt for fast validation checks
   CREATE INDEX IF NOT EXISTS idx_api_keys_status ON api_keys(revoked, expiresAt);
 `;
 db.exec(createApiKeysTable);
+
+// Add keyPrefix column if it doesn't exist
+try {
+  const stmt = db.prepare(`PRAGMA table_info(api_keys)`);
+  const existingColumns = stmt.all() as { name: string }[];
+  if (!existingColumns.some(ec => ec.name === 'keyPrefix')) {
+    console.log('Adding keyPrefix column to api_keys table...');
+    db.exec(`ALTER TABLE api_keys ADD COLUMN keyPrefix TEXT`);
+    
+    // Update existing rows to include keyPrefix based on hashedKey
+    const updateStmt = db.prepare(`
+      UPDATE api_keys 
+      SET keyPrefix = substr(hashedKey, 1, 8) 
+      WHERE keyPrefix IS NULL
+    `);
+    updateStmt.run();
+    
+    // Add NOT NULL constraint
+    db.exec(`
+      CREATE TABLE api_keys_new (
+        id TEXT PRIMARY KEY,
+        userId TEXT NOT NULL,
+        name TEXT NOT NULL,
+        hashedKey TEXT NOT NULL UNIQUE,
+        keyPrefix TEXT NOT NULL,
+        last4 TEXT NOT NULL,
+        createdAt TEXT DEFAULT (STRFTIME('%Y-%m-%dT%H:%M:%fZ', 'now')),
+        expiresAt TEXT,
+        lastUsedAt TEXT,
+        revoked INTEGER DEFAULT 0,
+        FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
+      );
+      
+      INSERT INTO api_keys_new 
+      SELECT * FROM api_keys;
+      
+      DROP TABLE api_keys;
+      ALTER TABLE api_keys_new RENAME TO api_keys;
+      
+      -- Recreate indexes
+      CREATE INDEX IF NOT EXISTS idx_api_keys_hashedKey ON api_keys(hashedKey);
+      CREATE INDEX IF NOT EXISTS idx_api_keys_keyPrefix ON api_keys(keyPrefix);
+      CREATE INDEX IF NOT EXISTS idx_api_keys_userId ON api_keys(userId);
+      CREATE INDEX IF NOT EXISTS idx_api_keys_status ON api_keys(revoked, expiresAt);
+    `);
+  }
+} catch (error) {
+  console.warn('Could not check/add column keyPrefix to api_keys table:', error);
+}
 
 // Create password_reset_tokens table
 const createPasswordResetTokensTable = `
