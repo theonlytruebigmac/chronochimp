@@ -12,8 +12,10 @@ RUN apt-get update && apt-get install -y \
     g++ \
     && rm -rf /var/lib/apt/lists/*
 
+# Copy entire project first (needed for postinstall script)
+COPY . .
+
 # Install dependencies
-COPY package.json package-lock.json ./
 RUN npm install --production=false
 
 # Copy application source
