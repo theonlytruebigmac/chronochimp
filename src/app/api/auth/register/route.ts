@@ -65,10 +65,13 @@ export async function POST(request: Request) {
     // Determine role with better error handling
     let role: UserRole = 'Viewer'; // Default role
     try {
-      const stmt = db.prepare('SELECT COUNT(*) as count FROM users');
-      const result = stmt.get() as { count: number };
-      role = result.count === 0 ? 'Admin' : 'Viewer';
-      console.log(`Determined role for new user: ${role} (user count: ${result.count})`);
+      // Use a simpler COUNT query that returns just a number
+      const stmt = db.prepare('SELECT COUNT(*) FROM users');
+      const result = stmt.get();
+      // SQLite returns the count as the first column
+      const count = result ? Object.values(result)[0] as number : 0;
+      role = count === 0 ? 'Admin' : 'Viewer';
+      console.log(`Determined role for new user: ${role} (user count: ${count})`);
     } catch (error) {
       console.error('Error getting user count:', error);
       role = 'Admin'; // If we can't check, assume this is the first user
