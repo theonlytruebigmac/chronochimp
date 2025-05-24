@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev -p 9004",
-    "build": "node scripts/copy-swagger-ui.js && next build",
+    "build": "bash scripts/build.sh",
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",

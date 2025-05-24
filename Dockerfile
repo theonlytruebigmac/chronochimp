@@ -10,19 +10,17 @@ RUN apt-get update && apt-get install -y \
     python3 \
     make \
     g++ \
+    bash \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy package files first
 COPY package*.json ./
 
-# Copy configuration files
+# Copy all project files
 COPY . .
 
 # Install dependencies
-RUN npm install --production=false
-
-# Copy the rest of the application
-COPY . .
+RUN npm install --production=false && npm install --save-dev babel-plugin-module-resolver
 
 # Set environment variables for build
 ENV NODE_ENV=production
