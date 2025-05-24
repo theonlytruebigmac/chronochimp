@@ -113,7 +113,7 @@ if (!shouldSkipDb) {
   `;
   db.exec(createTasksTable);
 
-// Add userId column to tasks table if it doesn't exist (for existing databases)
+  // Add userId column to tasks table if it doesn't exist (for existing databases)
   try {
     const stmt = db.prepare(`PRAGMA table_info(tasks)`);
     const existingColumns = stmt.all() as { name: string }[];
@@ -124,7 +124,6 @@ if (!shouldSkipDb) {
   } catch (error) {
     console.warn(`Could not check/add column userId to tasks table:`, error);
   }
-
 
   // Create a trigger to update the updatedAt timestamp for tasks
   const createTasksUpdatedAtTrigger = `
@@ -137,251 +136,190 @@ if (!shouldSkipDb) {
   `;
   db.exec(createTasksUpdatedAtTrigger);
 
-// Create users table
-const createUsersTable = `
-  CREATE TABLE IF NOT EXISTS users (
-    id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    email TEXT NOT NULL UNIQUE,
-    password TEXT NOT NULL,
-    role TEXT NOT NULL DEFAULT 'Viewer', -- Admin, Editor, Viewer
-    avatarUrl TEXT,
-    isTwoFactorEnabled BOOLEAN DEFAULT FALSE,
-    twoFactorSecret TEXT, -- CRITICAL: MUST be encrypted at rest in production
-    emailNotificationsEnabled BOOLEAN DEFAULT TRUE,
-    inAppNotificationsEnabled BOOLEAN DEFAULT TRUE,
-    smtpHost TEXT,
-    smtpPort INTEGER,
-    smtpEncryption TEXT,
-    smtpUsername TEXT,
-    smtpPassword TEXT, -- CRITICAL: MUST be encrypted at rest in production
-    smtpSendFrom TEXT,
-    joinedDate TEXT DEFAULT (STRFTIME('%Y-%m-%dT%H:%M:%fZ', 'now')),
-    updatedAt TEXT DEFAULT (STRFTIME('%Y-%m-%dT%H:%M:%fZ', 'now'))
-  );
-`;
-db.exec(createUsersTable);
+  // Create users table
+  const createUsersTable = `
+    CREATE TABLE IF NOT EXISTS users (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      email TEXT NOT NULL UNIQUE,
+      password TEXT NOT NULL,
+      role TEXT NOT NULL DEFAULT 'Viewer', -- Admin, Editor, Viewer
+      avatarUrl TEXT,
+      isTwoFactorEnabled BOOLEAN DEFAULT FALSE,
+      twoFactorSecret TEXT, -- CRITICAL: MUST be encrypted at rest in production
+      emailNotificationsEnabled BOOLEAN DEFAULT TRUE,
+      inAppNotificationsEnabled BOOLEAN DEFAULT TRUE,
+      smtpHost TEXT,
+      smtpPort INTEGER,
+      smtpEncryption TEXT,
+      smtpUsername TEXT,
+      smtpPassword TEXT, -- CRITICAL: MUST be encrypted at rest in production
+      smtpSendFrom TEXT,
+      joinedDate TEXT DEFAULT (STRFTIME('%Y-%m-%dT%H:%M:%fZ', 'now')),
+      updatedAt TEXT DEFAULT (STRFTIME('%Y-%m-%dT%H:%M:%fZ', 'now'))
+    );
+  `;
+  db.exec(createUsersTable);
 
-// Add columns if they don't exist (migration for existing dbs)
-const userColumnsToEnsure = [
-  { name: 'isTwoFactorEnabled', type: 'BOOLEAN DEFAULT FALSE' },
-  { name: 'twoFactorSecret', type: 'TEXT' }, 
-  { name: 'emailNotificationsEnabled', type: 'BOOLEAN DEFAULT TRUE' },
-  { name: 'inAppNotificationsEnabled', type: 'BOOLEAN DEFAULT TRUE' },
-  { name: 'smtpHost', type: 'TEXT' },
-  { name: 'smtpPort', type: 'INTEGER' },
-  { name: 'smtpEncryption', type: 'TEXT' },
-  { name: 'smtpUsername', type: 'TEXT' },
-  { name: 'smtpPassword', type: 'TEXT' }, 
-  { name: 'smtpSendFrom', type: 'TEXT' },
-];
+  // Create trigger to update the updatedAt timestamp for users
+  const createUsersUpdatedAtTrigger = `
+    CREATE TRIGGER IF NOT EXISTS update_users_updatedAt
+    AFTER UPDATE ON users
+    FOR EACH ROW
+    BEGIN
+      UPDATE users SET updatedAt = (STRFTIME('%Y-%m-%dT%H:%M:%fZ', 'now')) WHERE id = OLD.id;
+    END;
+  `;
+  db.exec(createUsersUpdatedAtTrigger);
 
-userColumnsToEnsure.forEach(column => {
+  // Create api_keys table
+  const createApiKeysTable = `
+    CREATE TABLE IF NOT EXISTS api_keys (
+      id TEXT PRIMARY KEY,
+      userId TEXT NOT NULL,
+      name TEXT NOT NULL,
+      hashedKey TEXT NOT NULL UNIQUE,
+      keyPrefix TEXT NOT NULL,
+      last4 TEXT NOT NULL,
+      createdAt TEXT DEFAULT (STRFTIME('%Y-%m-%dT%H:%M:%fZ', 'now')),
+      expiresAt TEXT,
+      lastUsedAt TEXT,
+      revoked INTEGER DEFAULT 0,
+      FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
+    );
+
+    -- Create index on hashedKey for fast lookups during validation
+    CREATE INDEX IF NOT EXISTS idx_api_keys_hashedKey ON api_keys(hashedKey);
+    -- Create index on keyPrefix for fast lookups during validation
+    CREATE INDEX IF NOT EXISTS idx_api_keys_keyPrefix ON api_keys(keyPrefix);
+    -- Create index on userId for fast key listing
+    CREATE INDEX IF NOT EXISTS idx_api_keys_userId ON api_keys(userId);
+    -- Create index on revoked and expiresAt for fast validation checks
+    CREATE INDEX IF NOT EXISTS idx_api_keys_status ON api_keys(revoked, expiresAt);
+  `;
+  db.exec(createApiKeysTable);
+
+  // Check if keyPrefix column exists in api_keys table and add it if needed
   try {
-    const stmt = db.prepare(`PRAGMA table_info(users)`);
-    const existingColumns = stmt.all() as { name: string }[];
-    if (!existingColumns.some(ec => ec.name === column.name)) {
-      // console.log(`Adding '${column.name}' column to 'users' table.`); // Removed for cleaner logs
-      db.exec(`ALTER TABLE users ADD COLUMN ${column.name} ${column.type}`);
+    const apiKeysColumnsStmt = db.prepare(`PRAGMA table_info(api_keys)`);
+    const apiKeysColumns = apiKeysColumnsStmt.all() as { name: string }[];
+    
+    if (!apiKeysColumns.some(col => col.name === 'keyPrefix')) {
+      console.log(`Adding 'keyPrefix' column to 'api_keys' table.`);
+      db.exec(`ALTER TABLE api_keys ADD COLUMN keyPrefix TEXT`);
+    }
+    
+    if (!apiKeysColumns.some(col => col.name === 'last4')) {
+      console.log(`Adding 'last4' column to 'api_keys' table.`);
+      db.exec(`ALTER TABLE api_keys ADD COLUMN last4 TEXT`);
     }
   } catch (error) {
-    console.warn(`Could not check/add column ${column.name} to users table:`, error);
+    console.warn(`Could not check/add columns to api_keys table:`, error);
   }
-});
 
+  // Create sessions table
+  const createSessionsTable = `
+    CREATE TABLE IF NOT EXISTS sessions (
+      id TEXT PRIMARY KEY,
+      userId TEXT NOT NULL,
+      token TEXT NOT NULL UNIQUE,
+      expiresAt TEXT NOT NULL,
+      createdAt TEXT DEFAULT (STRFTIME('%Y-%m-%dT%H:%M:%fZ', 'now')),
+      ipAddress TEXT,
+      userAgent TEXT,
+      lastActive TEXT DEFAULT (STRFTIME('%Y-%m-%dT%H:%M:%fZ', 'now')),
+      FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
+    );
 
-// Create a trigger to update the updatedAt timestamp for users
-const createUsersUpdatedAtTrigger = `
-  CREATE TRIGGER IF NOT EXISTS update_users_updatedAt
-  AFTER UPDATE ON users
-  FOR EACH ROW
-  BEGIN
-    UPDATE users SET updatedAt = (STRFTIME('%Y-%m-%dT%H:%M:%fZ', 'now')) WHERE id = OLD.id;
-  END;
-`;
-db.exec(createUsersUpdatedAtTrigger);
+    -- Create index on token for fast lookups during validation
+    CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(token);
+    -- Create index on userId for fast session listing
+    CREATE INDEX IF NOT EXISTS idx_sessions_userId ON sessions(userId);
+    -- Create index on expiresAt for cleaning up expired sessions
+    CREATE INDEX IF NOT EXISTS idx_sessions_expiresAt ON sessions(expiresAt);
+  `;
+  db.exec(createSessionsTable);
 
+  // Create password_reset_tokens table
+  const createPasswordResetTokensTable = `
+    CREATE TABLE IF NOT EXISTS password_reset_tokens (
+      id TEXT PRIMARY KEY,
+      userId TEXT NOT NULL,
+      token TEXT NOT NULL UNIQUE,
+      expiresAt TEXT NOT NULL,
+      createdAt TEXT DEFAULT (STRFTIME('%Y-%m-%dT%H:%M:%fZ', 'now')),
+      used INTEGER DEFAULT 0,
+      FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
+    );
 
-// Create api_keys table
-const createApiKeysTable = `
-  CREATE TABLE IF NOT EXISTS api_keys (
-    id TEXT PRIMARY KEY,
-    userId TEXT NOT NULL,
-    name TEXT NOT NULL,
-    hashedKey TEXT NOT NULL UNIQUE,
-    keyPrefix TEXT NOT NULL,
-    last4 TEXT NOT NULL,
-    createdAt TEXT DEFAULT (STRFTIME('%Y-%m-%dT%H:%M:%fZ', 'now')),
-    expiresAt TEXT,
-    lastUsedAt TEXT,
-    revoked INTEGER DEFAULT 0,
-    FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
-  );
+    -- Create index on token for fast lookups
+    CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_token ON password_reset_tokens(token);
+    -- Create index on userId for fast token listing
+    CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_userId ON password_reset_tokens(userId);
+  `;
+  db.exec(createPasswordResetTokensTable);
 
-  -- Create index on hashedKey for fast lookups during validation
-  CREATE INDEX IF NOT EXISTS idx_api_keys_hashedKey ON api_keys(hashedKey);
-  -- Create index on keyPrefix for fast lookups during validation
-  CREATE INDEX IF NOT EXISTS idx_api_keys_keyPrefix ON api_keys(keyPrefix);
-  -- Create index on userId for fast key listing
-  CREATE INDEX IF NOT EXISTS idx_api_keys_userId ON api_keys(userId);
-  -- Create index on revoked and expiresAt for fast validation checks
-  CREATE INDEX IF NOT EXISTS idx_api_keys_status ON api_keys(revoked, expiresAt);
-`;
-db.exec(createApiKeysTable);
+  // Create user_invitations table
+  const createUserInvitationsTable = `
+    CREATE TABLE IF NOT EXISTS user_invitations (
+      id TEXT PRIMARY KEY,
+      email TEXT NOT NULL,
+      token TEXT NOT NULL UNIQUE,
+      role TEXT NOT NULL DEFAULT 'Viewer',
+      invitedBy TEXT NOT NULL,
+      expiresAt TEXT NOT NULL,
+      createdAt TEXT DEFAULT (STRFTIME('%Y-%m-%dT%H:%M:%fZ', 'now')),
+      acceptedAt TEXT,
+      FOREIGN KEY (invitedBy) REFERENCES users(id) ON DELETE CASCADE
+    );
 
-// Check if keyPrefix column exists in api_keys table and add it if needed
-try {
-  const apiKeysColumnsStmt = db.prepare(`PRAGMA table_info(api_keys)`);
-  const apiKeysColumns = apiKeysColumnsStmt.all() as { name: string }[];
-  
-  if (!apiKeysColumns.some(col => col.name === 'keyPrefix')) {
-    console.log(`Adding 'keyPrefix' column to 'api_keys' table.`);
-    db.exec(`ALTER TABLE api_keys ADD COLUMN keyPrefix TEXT`);
-  }
-  
-  if (!apiKeysColumns.some(col => col.name === 'last4')) {
-    console.log(`Adding 'last4' column to 'api_keys' table.`);
-    db.exec(`ALTER TABLE api_keys ADD COLUMN last4 TEXT`);
-  }
-} catch (error) {
-  console.warn(`Could not check/add columns to api_keys table:`, error);
-}
+    -- Create index on token for fast lookups
+    CREATE INDEX IF NOT EXISTS idx_user_invitations_token ON user_invitations(token);
+    -- Create index on email for checking duplicates
+    CREATE INDEX IF NOT EXISTS idx_user_invitations_email ON user_invitations(email);
+  `;
+  db.exec(createUserInvitationsTable);
 
-// Add keyPrefix column if it doesn't exist
-try {
-  const stmt = db.prepare(`PRAGMA table_info(api_keys)`);
-  const existingColumns = stmt.all() as { name: string }[];
-  if (!existingColumns.some(ec => ec.name === 'keyPrefix')) {
-    console.log('Adding keyPrefix column to api_keys table...');
-    db.exec(`ALTER TABLE api_keys ADD COLUMN keyPrefix TEXT`);
-    
-    // Update existing rows to include keyPrefix based on hashedKey
-    const updateStmt = db.prepare(`
-      UPDATE api_keys 
-      SET keyPrefix = substr(hashedKey, 1, 8) 
-      WHERE keyPrefix IS NULL
-    `);
-    updateStmt.run();
-    
-    // Add NOT NULL constraint
-    db.exec(`
-      CREATE TABLE api_keys_new (
-        id TEXT PRIMARY KEY,
-        userId TEXT NOT NULL,
-        name TEXT NOT NULL,
-        hashedKey TEXT NOT NULL UNIQUE,
-        keyPrefix TEXT NOT NULL,
-        last4 TEXT NOT NULL,
-        createdAt TEXT DEFAULT (STRFTIME('%Y-%m-%dT%H:%M:%fZ', 'now')),
-        expiresAt TEXT,
-        lastUsedAt TEXT,
-        revoked INTEGER DEFAULT 0,
-        FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
-      );
-      
-      INSERT INTO api_keys_new 
-      SELECT * FROM api_keys;
-      
-      DROP TABLE api_keys;
-      ALTER TABLE api_keys_new RENAME TO api_keys;
-      
-      -- Recreate indexes
-      CREATE INDEX IF NOT EXISTS idx_api_keys_hashedKey ON api_keys(hashedKey);
-      CREATE INDEX IF NOT EXISTS idx_api_keys_keyPrefix ON api_keys(keyPrefix);
-      CREATE INDEX IF NOT EXISTS idx_api_keys_userId ON api_keys(userId);
-      CREATE INDEX IF NOT EXISTS idx_api_keys_status ON api_keys(revoked, expiresAt);
-    `);
-  }
-} catch (error) {
-  console.warn('Could not check/add column keyPrefix to api_keys table:', error);
-}
+  // Create system_settings table
+  const createSystemSettingsTable = `
+    CREATE TABLE IF NOT EXISTS system_settings (
+      id TEXT PRIMARY KEY,
+      key TEXT NOT NULL UNIQUE,
+      value TEXT NOT NULL,
+      description TEXT,
+      updatedAt TEXT DEFAULT (STRFTIME('%Y-%m-%dT%H:%M:%fZ', 'now')),
+      updatedBy TEXT,
+      FOREIGN KEY (updatedBy) REFERENCES users(id) ON DELETE SET NULL
+    );
 
-// Create password_reset_tokens table
-const createPasswordResetTokensTable = `
-  CREATE TABLE IF NOT EXISTS password_reset_tokens (
-    id TEXT PRIMARY KEY,
-    userId TEXT NOT NULL,
-    token TEXT NOT NULL UNIQUE, -- Stores the HASHED token
-    expiresAt TEXT NOT NULL,
-    createdAt TEXT DEFAULT (STRFTIME('%Y-%m-%dT%H:%M:%fZ', 'now')),
-    FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
-  );
-`;
-db.exec(createPasswordResetTokensTable);
+    -- Create index on key for fast lookups
+    CREATE INDEX IF NOT EXISTS idx_system_settings_key ON system_settings(key);
+  `;
+  db.exec(createSystemSettingsTable);
 
-// Create user_invites table
-const createUserInvitesTable = `
-  CREATE TABLE IF NOT EXISTS user_invites (
-    id TEXT PRIMARY KEY,
-    email TEXT NOT NULL UNIQUE, 
-    role TEXT NOT NULL DEFAULT 'Viewer',
-    token TEXT NOT NULL UNIQUE, -- Stores the HASHED invite token
-    status TEXT NOT NULL DEFAULT 'pending', -- e.g., pending, accepted, expired
-    expiresAt TEXT NOT NULL,
-    createdAt TEXT DEFAULT (STRFTIME('%Y-%m-%dT%H:%M:%fZ', 'now'))
-  );
-`;
-db.exec(createUserInvitesTable);
+  // Create audit_logs table
+  const createAuditLogsTable = `
+    CREATE TABLE IF NOT EXISTS audit_logs (
+      id TEXT PRIMARY KEY,
+      userId TEXT,
+      action TEXT NOT NULL,
+      resourceType TEXT NOT NULL,
+      resourceId TEXT,
+      details TEXT, -- JSON string with additional details
+      timestamp TEXT DEFAULT (STRFTIME('%Y-%m-%dT%H:%M:%fZ', 'now')),
+      ipAddress TEXT,
+      userAgent TEXT,
+      FOREIGN KEY (userId) REFERENCES users(id) ON DELETE SET NULL
+    );
 
-// Create indexes for better query performance
-const createIndexes = `
-  -- Tasks indexes
-  CREATE INDEX IF NOT EXISTS idx_tasks_userId ON tasks(userId);
-  CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
-  CREATE INDEX IF NOT EXISTS idx_tasks_dueDate ON tasks(dueDate);
-  
-  -- API keys indexes
-  CREATE INDEX IF NOT EXISTS idx_api_keys_userId ON api_keys(userId);
-  CREATE INDEX IF NOT EXISTS idx_api_keys_hashedKey ON api_keys(hashedKey);
-  CREATE INDEX IF NOT EXISTS idx_api_keys_lastUsedAt ON api_keys(lastUsedAt);
-  CREATE INDEX IF NOT EXISTS idx_api_keys_status ON api_keys(revoked, expiresAt);
-  
-  -- Password reset tokens index
-  CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_userId ON password_reset_tokens(userId);
-  CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_expiresAt ON password_reset_tokens(expiresAt);
-  
-  -- User invites indexes
-  CREATE INDEX IF NOT EXISTS idx_user_invites_email ON user_invites(email);
-  CREATE INDEX IF NOT EXISTS idx_user_invites_status ON user_invites(status);
-  CREATE INDEX IF NOT EXISTS idx_user_invites_expiresAt ON user_invites(expiresAt);
-`;
-db.exec(createIndexes);
-
-// console.log('Database initialized and connected at', dbPath); // Removed for cleaner logs in production
-
-// Helper to safely parse JSON
-export function safeJSONParse<T>(jsonString: string | null | undefined, defaultValue: T): T {
-  if (jsonString === null || jsonString === undefined) {
-    return defaultValue;
-  }
-  try {
-    return JSON.parse(jsonString);
-  } catch (e) {
-    return defaultValue;
-  }
-}
-
-// Helper for safe database operations with proper cleanup
-export function withDb<T>(operation: (db: DatabaseType) => T): T {
-  const stmt = {
-    finalized: false,
-    handle: null as any,
-    finalize() {
-      if (!this.finalized && this.handle) {
-        this.handle.finalize();
-        this.finalized = true;
-      }
-    }
-  };
-
-  try {
-    return operation(db);
-  } catch (error) {
-    console.error('Database operation failed:', error);
-    throw error;
-  } finally {
-    stmt.finalize();
-  }
+    -- Create index on userId for fast filtering
+    CREATE INDEX IF NOT EXISTS idx_audit_logs_userId ON audit_logs(userId);
+    -- Create index on resourceType and resourceId for fast filtering
+    CREATE INDEX IF NOT EXISTS idx_audit_logs_resource ON audit_logs(resourceType, resourceId);
+    -- Create index on timestamp for chronological querying
+    CREATE INDEX IF NOT EXISTS idx_audit_logs_timestamp ON audit_logs(timestamp);
+  `;
+  db.exec(createAuditLogsTable);
 }
 
 // Register cleanup handler

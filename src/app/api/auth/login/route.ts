@@ -44,11 +44,23 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Email and password are required.' }, { status: 400 });
     }
 
-    const stmt = db.prepare('SELECT id, name, email, password, role, avatarUrl, joinedDate, isTwoFactorEnabled, twoFactorSecret FROM users WHERE email = ?');
-    const user = stmt.get(email) as UserFromDb | undefined;
-
-    if (!user || !user.password) {
-      return NextResponse.json({ error: 'Invalid email or password.' }, { status: 401 });
+    let user: UserFromDb | undefined;
+    try {
+      const stmt = db.prepare('SELECT id, name, email, password, role, avatarUrl, joinedDate, isTwoFactorEnabled, twoFactorSecret FROM users WHERE email = ?');
+      user = stmt.get(email) as UserFromDb | undefined;
+      
+      if (!user) {
+        console.warn(`Login attempt failed: No user found with email ${email}`);
+        return NextResponse.json({ error: 'Invalid email or password.' }, { status: 401 });
+      }
+      
+      if (!user.password) {
+        console.error(`User found but password is missing for email ${email}`);
+        return NextResponse.json({ error: 'Account error. Please contact support.' }, { status: 500 });
+      }
+    } catch (dbError) {
+      console.error('Database error during login:', dbError);
+      return NextResponse.json({ error: 'Server error during authentication.' }, { status: 500 });
     }
 
     const isPasswordValid = await bcrypt.compare(password, user.password);

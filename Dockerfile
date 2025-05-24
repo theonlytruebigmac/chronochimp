@@ -52,13 +52,18 @@ WORKDIR /app
 # Copy all files from deps stage
 COPY --from=deps /app/ ./
 
+# Copy and prepare the mock database file for build
+COPY src/lib/db-mock.ts ./src/lib/
+
 # Set build environment variables
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_ENV=production
+ENV NEXT_BUILD_SKIP_DB=true
+ENV IS_BUILD_ENVIRONMENT=true
 
-# Run build script (includes module resolution setup)
+# Run build script with database operations skipped
 RUN chmod +x scripts/*.sh && \
-    npm run build
+    npm run build:no-db
 
 # Stage 3: Runner
 FROM node:18-slim AS runner
@@ -90,13 +95,29 @@ COPY --from=builder /app/node_modules/better-sqlite3 ./node_modules/better-sqlit
 COPY --from=builder /app/.env* ./
 
 # Create necessary directories with correct permissions
-RUN mkdir -p .data .next/cache /usr/local/bin && \
+RUN mkdir -p .data .next/cache && \
     chown -R nextjs:nodejs . && \
     chmod -R 755 .next
 
-# Copy and set up entrypoint script
-COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
-RUN chown nextjs:nodejs /usr/local/bin/entrypoint.sh && \
+# Create entrypoint script directly
+RUN echo '#!/bin/bash' > /usr/local/bin/entrypoint.sh && \
+    echo 'set -e' >> /usr/local/bin/entrypoint.sh && \
+    echo '' >> /usr/local/bin/entrypoint.sh && \
+    echo '# Initialize database and set permissions' >> /usr/local/bin/entrypoint.sh && \
+    echo 'echo "Initializing database and setting permissions..."' >> /usr/local/bin/entrypoint.sh && \
+    echo 'mkdir -p /app/.data || true' >> /usr/local/bin/entrypoint.sh && \
+    echo 'touch /app/.data/chrono.db || true' >> /usr/local/bin/entrypoint.sh && \
+    echo 'chown -R nextjs:nodejs /app/.data || echo "Warning: Could not set ownership on data directory"' >> /usr/local/bin/entrypoint.sh && \
+    echo 'chmod -R 777 /app/.data || echo "Warning: Could not set permissions on data directory"' >> /usr/local/bin/entrypoint.sh && \
+    echo 'chmod 666 /app/.data/chrono.db || echo "Warning: Could not set permissions on database file"' >> /usr/local/bin/entrypoint.sh && \
+    echo '' >> /usr/local/bin/entrypoint.sh && \
+    echo '# Display permissions for verification' >> /usr/local/bin/entrypoint.sh && \
+    echo 'echo "Current data directory permissions:"' >> /usr/local/bin/entrypoint.sh && \
+    echo 'ls -la /app/.data/' >> /usr/local/bin/entrypoint.sh && \
+    echo '' >> /usr/local/bin/entrypoint.sh && \
+    echo '# Execute the main container command' >> /usr/local/bin/entrypoint.sh && \
+    echo 'echo "Starting application..."' >> /usr/local/bin/entrypoint.sh && \
+    echo 'exec "$@"' >> /usr/local/bin/entrypoint.sh && \
     chmod +x /usr/local/bin/entrypoint.sh
 
 # Switch to non-root user

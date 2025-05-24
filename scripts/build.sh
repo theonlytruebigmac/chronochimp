@@ -1,6 +1,17 @@
 #!/bin/bash
 set -e
 
+# Check if we're in build environment (Docker)
+if [ "$IS_BUILD_ENVIRONMENT" = "true" ]; then
+  echo "Build environment detected, using no-db build..."
+  npm run build:no-db
+  exit 0
+fi
+
+# Run pre-build database initialization first
+echo "Running pre-build database initialization..."
+bash ./scripts/pre-build.sh
+
 echo "Ensuring proper module resolution..."
 echo "Preparing for build..."
 

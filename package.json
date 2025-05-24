@@ -5,6 +5,8 @@
   "scripts": {
     "dev": "next dev -p 9004",
     "build": "bash scripts/build.sh",
+    "build:next": "next build",
+    "build:no-db": "bash scripts/build-no-db.sh",
     "build:docker": "bash scripts/docker-build.sh",
     "start": "next start",
     "lint": "next lint",

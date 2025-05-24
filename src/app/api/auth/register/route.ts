@@ -39,9 +39,30 @@ export async function POST(request: Request) {
     const now = new Date().toISOString();
 
     // Determine role
-    const userCountStmt = db.prepare('SELECT COUNT(*) as count FROM users');
-    const { count } = userCountStmt.get() as { count: number };
-    const role: UserRole = count === 0 ? 'Admin' : 'Viewer';
+    let role: UserRole = 'Viewer'; // Default role
+    try {
+      const userCountStmt = db.prepare('SELECT COUNT(*) as count FROM users');
+      const result = userCountStmt.get();
+      
+      if (result && typeof result === 'object' && 'count' in result) {
+        const count = (result as { count: number }).count;
+        role = count === 0 ? 'Admin' : 'Viewer';
+      } else {
+        console.warn('Could not determine user count, defaulting to Viewer role');
+      }
+    } catch (error) {
+      console.error('Error getting user count:', error);
+      // If we can't get a count, just make the first registered user an Admin
+      // This is a fallback for a fresh database
+      try {
+        const checkAnyUserStmt = db.prepare('SELECT 1 FROM users LIMIT 1');
+        const anyUser = checkAnyUserStmt.get();
+        role = anyUser ? 'Viewer' : 'Admin';
+      } catch (innerError) {
+        console.error('Error checking for any users:', innerError);
+        // Keep the default 'Viewer' role
+      }
+    }
 
     const stmt = db.prepare(`
       INSERT INTO users (id, name, email, password, role, joinedDate, updatedAt)
