@@ -42,7 +42,7 @@ services:
 
 volumes:
   chronotask_data_prod:
-    driver: local
+    name: chronotask_data_prod
 
 networks:
   t3_proxy:

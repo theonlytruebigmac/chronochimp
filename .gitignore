@@ -59,3 +59,8 @@ firebase-debug.log
 .env.development
 .env.production
 .env.local
+# Database
+.data/
+*.db
+*.db-*
+data/

@@ -12,7 +12,10 @@ RUN apt-get update && apt-get install -y \
     bash \
     dos2unix \
     git \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && mkdir -p /app/.data \
+    && chown -R 1001:1001 /app/.data \
+    && chmod 755 /app/.data
 
 # Copy package files and configs first
 COPY package*.json ./

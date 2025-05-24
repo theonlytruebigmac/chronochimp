@@ -5,6 +5,96 @@ import { exec as execCallback } from 'child_process';
 import { promisify } from 'util';
 import type { Database as DatabaseType } from 'better-sqlite3';
 
+export class DatabaseUtils {
+  private db: DatabaseType;
+
+  constructor(db: DatabaseType) {
+    this.db = db;
+  }
+
+  static async ensureDatabaseAccess(dbPath: string): Promise<void> {
+    const exec = promisify(execCallback);
+    try {
+      // Create directory if needed
+      const dbDir = path.dirname(dbPath);
+      await fs.promises.mkdir(dbDir, { recursive: true });
+      
+      // Set directory permissions
+      await fs.promises.chmod(dbDir, 0o750);
+      
+      // Create/check database file
+      const fileExists = await fs.promises.access(dbPath)
+        .then(() => true)
+        .catch(() => false);
+        
+      if (!fileExists) {
+        await fs.promises.writeFile(dbPath, '');
+      }
+      
+      // Set file permissions
+      await fs.promises.chmod(dbPath, 0o640);
+      
+      if (process.env.NODE_ENV === 'production') {
+        try {
+          await exec(`chown nextjs:nodejs ${dbPath}`);
+        } catch (e) {
+          console.warn('Could not set database ownership:', e);
+        }
+      }
+    } catch (error) {
+      console.error('Error ensuring database access:', error);
+      throw error;
+    }
+  }
+
+  safeQuery<T>(sql: string, params: any[] = [], defaultValue: T | null = null): T | null {
+    try {
+      const stmt = this.db.prepare(sql);
+      return stmt.get(...params) as T || defaultValue;
+    } catch (error) {
+      console.error(`Query failed - SQL: ${sql}`, error);
+      return defaultValue;
+    }
+  }
+
+  safeQueryAll<T>(sql: string, params: any[] = [], defaultValue: T[] = []): T[] {
+    try {
+      const stmt = this.db.prepare(sql);
+      return stmt.all(...params) as T[] || defaultValue;
+    } catch (error) {
+      console.error(`Query failed - SQL: ${sql}`, error);
+      return defaultValue;
+    }
+  }
+
+  safeExecute(sql: string, params: any[] = []): { changes: number; lastInsertRowid: number | null } {
+    try {
+      const stmt = this.db.prepare(sql);
+      const result = stmt.run(...params);
+      return {
+        changes: result.changes,
+        lastInsertRowid: result.lastInsertRowid ? Number(result.lastInsertRowid) : null
+      };
+    } catch (error) {
+      console.error(`Execute failed - SQL: ${sql}`, error);
+      return { changes: 0, lastInsertRowid: null };
+    }
+  }
+
+  safeTransaction<T>(operation: (db: DatabaseType) => T): T | null {
+    try {
+      let result: T;
+      this.db.transaction(() => {
+        result = operation(this.db);
+      })();
+      return result!;
+    } catch (error) {
+      console.error(`Transaction failed:`, error);
+      return null;
+    }
+  }
+}
+
 const exec = promisify(execCallback);
 
 /**

@@ -2,7 +2,27 @@ import Database from 'better-sqlite3';
 import type { Database as DatabaseType } from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
-import { ensureDatabaseAccess, runWithRecovery, safeQuery, safeQueryAll, safeExecute, safeTransaction } from './db-utils';
+import { 
+  ensureDatabaseAccess, 
+  runWithRecovery, 
+  safeQuery as utilsSafeQuery, 
+  safeQueryAll as utilsSafeQueryAll, 
+  safeExecute as utilsSafeExecute, 
+  safeTransaction as utilsSafeTransaction 
+} from './db-utils';
+
+// Re-export database utilities with our db instance
+export const safeQuery = <T>(sql: string, params: any[] = [], defaultValue: T | null = null) => 
+  utilsSafeQuery<T>(db, sql, params, defaultValue);
+
+export const safeQueryAll = <T>(sql: string, params: any[] = [], defaultValue: T[] = []) => 
+  utilsSafeQueryAll<T>(db, sql, params, defaultValue);
+
+export const safeExecute = (sql: string, params: any[] = []) => 
+  utilsSafeExecute(db, sql, params);
+
+export const safeTransaction = <T>(operations: Array<{ sql: string; params?: any[] }>) => 
+  utilsSafeTransaction(db, operations);
 
 // Helper to safely parse JSON
 export function safeJSONParse<T>(jsonString: string | null | undefined, defaultValue: T): T {
@@ -39,11 +59,8 @@ export function withDb<T>(operation: (db: DatabaseType) => T): T {
   }
 }
 
-// Export the safe query helpers
-export { safeQuery, safeQueryAll, safeExecute, safeTransaction };
-
-// Check if we should skip database operations (during build)
-const shouldSkipDb = process.env.NEXT_BUILD_SKIP_DB === 'true' || process.env.IS_BUILD_ENVIRONMENT === 'true';
+// Check if we should skip database operations (only during build)
+const shouldSkipDb = process.env.NEXT_BUILD_SKIP_DB === 'true';
 
 // Create a mock database for build time
 class MockDatabase {
@@ -60,6 +77,7 @@ class MockDatabase {
   close() {}
 }
 
+// Always use data directory in the application root
 const dataDir = path.join(process.cwd(), '.data');
 const dbPath = path.join(dataDir, 'chrono.db');
 
@@ -121,7 +139,7 @@ function initDatabase() {
 
 export const db = initDatabase();
 
-// Skip all table creation during build
+// Create database schema if we're not in build mode
 if (!shouldSkipDb) {
   try {
     console.log('Initializing database schema...');
@@ -137,16 +155,16 @@ if (!shouldSkipDb) {
         priority TEXT DEFAULT 'medium',
         dueDate TEXT,
         startDate TEXT,
-        tags TEXT, /* JSON string array */
-        subtasks TEXT, /* JSON string array of Subtask objects */
-        timeLogs TEXT, /* JSON string array of TimeLog objects */
+        tags TEXT,
+        subtasks TEXT,
+        timeLogs TEXT,
         notes TEXT,
         createdAt TEXT DEFAULT (STRFTIME('%Y-%m-%dT%H:%M:%fZ', 'now')) NOT NULL,
         updatedAt TEXT DEFAULT (STRFTIME('%Y-%m-%dT%H:%M:%fZ', 'now')) NOT NULL,
         FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
       );
     `;
-    safeExecute(db, createTasksTable);
+    db.exec(createTasksTable);
 
     // Add userId column to tasks table if it doesn't exist (for existing databases)
     try {
@@ -193,7 +211,7 @@ if (!shouldSkipDb) {
         updatedAt TEXT DEFAULT (STRFTIME('%Y-%m-%dT%H:%M:%fZ', 'now'))
       );
     `;
-    safeExecute(db, createUsersTable);
+    db.exec(createUsersTable);
 
     // Create trigger to update the updatedAt timestamp for users
     const createUsersUpdatedAtTrigger = `
@@ -204,7 +222,7 @@ if (!shouldSkipDb) {
         UPDATE users SET updatedAt = (STRFTIME('%Y-%m-%dT%H:%M:%fZ', 'now')) WHERE id = OLD.id;
       END;
     `;
-    safeExecute(db, createUsersUpdatedAtTrigger);
+    db.exec(createUsersUpdatedAtTrigger);
 
     // Create api_keys table
     const createApiKeysTable = `
@@ -231,7 +249,7 @@ if (!shouldSkipDb) {
       -- Create index on revoked and expiresAt for fast validation checks
       CREATE INDEX IF NOT EXISTS idx_api_keys_status ON api_keys(revoked, expiresAt);
     `;
-    safeExecute(db, createApiKeysTable);
+    db.exec(createApiKeysTable);
 
     // Check if keyPrefix column exists in api_keys table and add it if needed
     try {
@@ -271,7 +289,7 @@ if (!shouldSkipDb) {
       -- Create index on expiresAt for cleaning up expired sessions
       CREATE INDEX IF NOT EXISTS idx_sessions_expiresAt ON sessions(expiresAt);
     `;
-    safeExecute(db, createSessionsTable);
+    db.exec(createSessionsTable);
 
     // Create password_reset_tokens table
     const createPasswordResetTokensTable = `
@@ -290,7 +308,7 @@ if (!shouldSkipDb) {
       -- Create index on userId for fast token listing
       CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_userId ON password_reset_tokens(userId);
     `;
-    safeExecute(db, createPasswordResetTokensTable);
+    db.exec(createPasswordResetTokensTable);
 
     // Create user_invitations table
     const createUserInvitationsTable = `
@@ -311,7 +329,7 @@ if (!shouldSkipDb) {
       -- Create index on email for checking duplicates
       CREATE INDEX IF NOT EXISTS idx_user_invitations_email ON user_invitations(email);
     `;
-    safeExecute(db, createUserInvitationsTable);
+    db.exec(createUserInvitationsTable);
 
     // Create system_settings table
     const createSystemSettingsTable = `
@@ -328,7 +346,7 @@ if (!shouldSkipDb) {
       -- Create index on key for fast lookups
       CREATE INDEX IF NOT EXISTS idx_system_settings_key ON system_settings(key);
     `;
-    safeExecute(db, createSystemSettingsTable);
+    db.exec(createSystemSettingsTable);
 
     // Create audit_logs table
     const createAuditLogsTable = `
@@ -352,7 +370,7 @@ if (!shouldSkipDb) {
       -- Create index on timestamp for chronological querying
       CREATE INDEX IF NOT EXISTS idx_audit_logs_timestamp ON audit_logs(timestamp);
     `;
-    safeExecute(db, createAuditLogsTable);
+    db.exec(createAuditLogsTable);
     
     console.log('Database schema initialization complete');
   } catch (error) {
