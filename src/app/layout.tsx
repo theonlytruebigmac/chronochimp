@@ -1,7 +1,7 @@
 "use client"; // Required for QueryClientProvider and usePathname
 
 import type { Metadata } from 'next';
-import { Inter } from 'next/font/google';
+// Replace the import with a dynamic require for the font
 import './globals.css';
 import { SidebarProvider, Sidebar, SidebarInset } from '@/components/ui/sidebar';
 import { AppHeader } from '@/components/layout/AppHeader';
@@ -12,10 +12,9 @@ import { QueryClient, QueryClientProvider as TanstackQueryClientProvider } from 
 import React from 'react';
 import { usePathname } from 'next/navigation'; // Import usePathname
 
-const inter = Inter({
+const inter = {
   variable: '--font-inter',
-  subsets: ['latin'],
-});
+};
 
 // Metadata needs to be handled differently for client components or in parent server component
 // Since RootLayout is a client component, this export const metadata is not directly used here.

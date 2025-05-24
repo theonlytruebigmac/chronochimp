@@ -22,7 +22,7 @@ const priorities: TaskPriority[] = ['low', 'medium', 'high'];
 interface NewTaskDialogProps {
   isOpen: boolean;
   onClose: () => void;
-  onAddTask: (newTaskData: any) => void; // Use any to avoid type conflicts
+  onAddTask: (newTaskData: Omit<Task, 'id' | 'createdAt' | 'updatedAt'>) => void;
 }
 
 export function NewTaskDialog({ isOpen, onClose, onAddTask }: NewTaskDialogProps) {

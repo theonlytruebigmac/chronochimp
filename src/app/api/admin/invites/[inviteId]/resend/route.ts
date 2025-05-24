@@ -8,11 +8,14 @@ import { getAuthUserId, verify } from '@/lib/auth';
 const SALT_ROUNDS = 10;
 const INVITE_EXPIRY_HOURS = 72; // 3 days
 
-interface Params {
-  params: { inviteId: string };
+type RouteParams = {
+  inviteId: string;
 }
 
-export async function POST(request: NextRequest, { params }: Params) {
+export async function POST(
+  request: NextRequest,
+  { params }: { params: RouteParams }
+) {
   const authUser = await verify(request);
 
   if (!authUser) {

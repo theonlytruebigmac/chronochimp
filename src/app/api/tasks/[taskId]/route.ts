@@ -36,12 +36,12 @@ const UpdateTaskSchema = z.object({
   // userId is not updatable by client directly
 }).partial();
 
-// Update Params type to reflect that context.params is a Promise
-type RouteContext = {
-  params: Promise<{ taskId: string }>;
+// Update Params type to reflect the new format for Next.js 15.3.2
+type RouteParams = {
+  taskId: string;
 };
 
-export async function GET(request: NextRequest, context: RouteContext) {
+export async function GET(request: NextRequest, { params }: { params: RouteParams }) {
   const userId = await getAuthUserId(request);
   
   if (!JWT_SECRET_STRING) {
@@ -65,8 +65,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
   }
 
   try {
-    const routeParams = await context.params;
-    const taskId = routeParams.taskId;
+    const taskId = params.taskId;
     const stmt = db.prepare('SELECT * FROM tasks WHERE id = ?');
     const dbTask = stmt.get(taskId) as any;
 
@@ -149,7 +148,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
   }
 }
 
-export async function PUT(request: NextRequest, context: RouteContext) {
+export async function PUT(request: NextRequest, { params }: { params: RouteParams }) {
   const authUserId = await getAuthUserId(request);
   if (!JWT_SECRET_STRING) {
     return NextResponse.json(
@@ -172,8 +171,7 @@ export async function PUT(request: NextRequest, context: RouteContext) {
   }
   
   try {
-    const routeParams = await context.params;
-    const taskId = routeParams.taskId;
+    const taskId = params.taskId;
     
     const body = await request.json();
     const validationResult = UpdateTaskSchema.safeParse(body);
@@ -228,7 +226,9 @@ export async function PUT(request: NextRequest, context: RouteContext) {
       try {
         const currentTask: Task = {
           ...existingDbTask,
-          tags: safeJSONParse<TagData[] | string[]>(existingDbTask.tags as unknown as string, []),
+          tags: safeJSONParse<TagData[] | string[]>(existingDbTask.tags as unknown as string, []).map(tag => 
+            typeof tag === 'string' ? { text: tag } : tag
+          ),
           subtasks: safeJSONParse<Subtask[]>(existingDbTask.subtasks as unknown as string, []),
           timeLogs: safeJSONParse<TimeLog[]>(existingDbTask.timeLogs as unknown as string, []),
         };
@@ -306,7 +306,7 @@ export async function PUT(request: NextRequest, context: RouteContext) {
   }
 }
 
-export async function DELETE(request: NextRequest, context: RouteContext) {
+export async function DELETE(request: NextRequest, { params }: { params: RouteParams }) {
   const authUserId = await getAuthUserId(request);
   if (!JWT_SECRET_STRING) {
     return NextResponse.json(
@@ -329,8 +329,7 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
   }
 
   try {
-    const routeParams = await context.params;
-    const taskId = routeParams.taskId;
+    const taskId = params.taskId;
     
     const selectStmt = db.prepare('SELECT userId FROM tasks WHERE id = ?');
     const taskToDelete = selectStmt.get(taskId) as { userId: string } | undefined;

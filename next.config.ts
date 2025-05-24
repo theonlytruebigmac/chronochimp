@@ -5,15 +5,14 @@ import type { Configuration as WebpackConfig } from 'webpack';
 const nextConfig: NextConfig = {
   output: 'standalone',
   typescript: {
-    ignoreBuildErrors: true,
+    // Ensure all type errors are treated as errors
+    ignoreBuildErrors: false,
   },
   eslint: {
     ignoreDuringBuilds: true,
   },
+  // Experimental features disabled for stability
   experimental: {
-    // These features help with module resolution and optimization
-    typedRoutes: true,
-    serverComponentsExternalPackages: [],
     optimizePackageImports: ['@radix-ui/react-slot'],
   },
   webpack: (config: WebpackConfig) => {

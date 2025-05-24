@@ -1,24 +1,32 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import SwaggerUIBundle from 'swagger-ui-dist/swagger-ui-bundle';
+import dynamic from 'next/dynamic';
 import 'swagger-ui-dist/swagger-ui.css';
 
 export default function ApiDocsPage() {
   const swaggerUI = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (swaggerUI.current) {
-      SwaggerUIBundle({
-        url: '/openapi.yaml',
-        dom_id: '#swagger-ui',
-        deepLinking: true,
-        presets: [
-          SwaggerUIBundle.presets.apis,
-          SwaggerUIBundle.SwaggerUIStandalonePreset
-        ],
-      });
-    }
+    const initSwagger = async () => {
+      if (swaggerUI.current) {
+        try {
+          const SwaggerUI = (await import('swagger-ui-dist/swagger-ui-bundle')).default;
+          SwaggerUI({
+            url: '/openapi.yaml',
+            dom_id: '#swagger-ui',
+            deepLinking: true,
+            presets: [
+              SwaggerUI.presets.apis,
+              SwaggerUI.SwaggerUIStandalonePreset
+            ],
+          });
+        } catch (error) {
+          console.error('Failed to load Swagger UI:', error);
+        }
+      }
+    };
+    initSwagger();
   }, []);
 
   return (

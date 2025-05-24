@@ -16,15 +16,15 @@ import {
 import React from 'react';
 
 const mainNavItems = [
-  { href: '/dashboard', label: 'Dashboard', icon: LayoutGrid },
-  { href: '/tasks', label: 'My Tasks', icon: ListChecks },
-  { href: '/views', label: 'Views', icon: Eye }, // Added Views link
-  { href: '/settings', label: 'Settings', icon: Settings },
+  { href: '/dashboard' as const, label: 'Dashboard', icon: LayoutGrid },
+  { href: '/tasks' as const, label: 'My Tasks', icon: ListChecks },
+  { href: '/views' as const, label: 'Views', icon: Eye }, // Added Views link
+  { href: '/settings' as const, label: 'Settings', icon: Settings },
 ];
 
 const bottomNavItems = [
-  { href: '/admin', label: 'Admin Panel', icon: ShieldCheck },
-  { href: '/api-docs', label: 'API Docs', icon: TerminalSquare },
+  { href: '/admin' as const, label: 'Admin Panel', icon: ShieldCheck },
+  { href: '/api-docs' as const, label: 'API Docs', icon: TerminalSquare },
 ];
 
 export function AppSidebar() {
@@ -33,7 +33,7 @@ export function AppSidebar() {
   return (
     <>
       <SidebarHeader className="p-4">
-        <Link href="/dashboard" className="flex items-center justify-center gap-2 font-semibold text-primary">
+        <Link href="/dashboard" as="/dashboard" className="flex items-center justify-center gap-2 font-semibold text-primary">
           <span className="group-data-[collapsible=icon]:hidden text-3xl">ChronoChimp</span>
         </Link>
       </SidebarHeader>

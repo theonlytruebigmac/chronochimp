@@ -45,7 +45,7 @@ export interface Task {
   priority?: 'high' | 'medium' | 'low';
   dueDate?: string; // ISO string for date
   startDate?: string; // ISO string for date
-  tags?: TagData[] | string[]; // Support both formats for backward compatibility
+  tags?: TagData[]; // Store all tags in TagData format
   subtasks?: Subtask[];
   timeLogs?: TimeLog[];
   notes?: string;

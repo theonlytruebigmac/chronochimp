@@ -15,9 +15,13 @@ const isEmailInUse = (email: string, excludeUserId?: string): boolean => {
   return result.count > 0;
 };
 
+type RouteParams = {
+  userId: string;
+};
+
 export async function GET(
   request: NextRequest,
-  context: { params: { userId: string } }
+  { params }: { params: RouteParams }
 ) {
   const authUser = await verify(request);
 
@@ -54,8 +58,8 @@ export async function GET(
   }
 
   try {
-    // Access userId through context parameter
-    const { userId } = context.params;
+    // Access userId through params
+    const { userId } = params;
     
     const stmt = db.prepare('SELECT id, name, email, role, joinedDate, avatarUrl, isTwoFactorEnabled FROM users WHERE id = ?');
     let user = stmt.get(userId) as User | undefined;
@@ -83,7 +87,7 @@ export async function GET(
 
 export async function PUT(
   request: NextRequest,
-  context: { params: { userId: string } }
+  { params }: { params: RouteParams }
 ) {
   const authUser = await verify(request);
 
@@ -120,7 +124,7 @@ export async function PUT(
   }
 
   try {
-    const { userId } = context.params;
+    const { userId } = params;
     const data = await request.json();
     
     // Check if user exists
@@ -213,7 +217,7 @@ export async function PUT(
 
 export async function DELETE(
   request: NextRequest,
-  context: { params: { userId: string } }
+  { params }: { params: RouteParams }
 ) {
   const authUser = await verify(request);
 
@@ -250,7 +254,7 @@ export async function DELETE(
   }
 
   try {
-    const { userId } = context.params;
+    const { userId } = params;
     
     // Check if user exists
     const userCheck = db.prepare('SELECT id FROM users WHERE id = ?').get(userId);

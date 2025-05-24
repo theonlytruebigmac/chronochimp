@@ -1,14 +1,13 @@
-
-import { NextResponse } from 'next/server';
+import { NextResponse, NextRequest } from 'next/server';
 import { db } from '@/lib/db';
 import bcrypt from 'bcrypt';
 import { z } from 'zod';
 
-interface Params {
-  params: { token: string };
-}
+type RouteParams = {
+  token: string;
+};
 
-export async function GET(request: Request, { params }: Params) {
+export async function GET(request: NextRequest, { params }: { params: RouteParams }) {
   try {
     const { token: rawToken } = params;
 
@@ -32,20 +31,21 @@ export async function GET(request: Request, { params }: Params) {
     }
 
     if (!foundInvite) {
-      return NextResponse.json({ error: 'Invalid or expired invite token.' }, { status: 404 });
+      return NextResponse.json({ error: 'Invite not found or expired.' }, { status: 404 });
     }
 
-    const now = new Date();
-    const expiresAtDate = new Date(foundInvite.expiresAt);
-    if (now > expiresAtDate) {
-      // Optionally, update status to 'expired' here
-      const expireStmt = db.prepare('UPDATE user_invites SET status = ? WHERE id = ?');
-      expireStmt.run('expired', foundInvite.id);
-      return NextResponse.json({ error: 'Invite token has expired.' }, { status: 400 });
+    // Check if the invite has expired
+    const expiryDate = new Date(foundInvite.expiresAt);
+    if (expiryDate < new Date()) {
+      return NextResponse.json({ error: 'Invite has expired.' }, { status: 410 });
     }
 
-    // Return only necessary info
-    return NextResponse.json({ email: foundInvite.email, role: foundInvite.role });
+    // Return relevant invite details (avoiding sensitive data)
+    return NextResponse.json({
+      email: foundInvite.email,
+      role: foundInvite.role,
+      expiresAt: foundInvite.expiresAt
+    });
 
   } catch (error) {
     console.error('Failed to validate invite token:', error);

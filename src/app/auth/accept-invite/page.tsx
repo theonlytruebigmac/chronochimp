@@ -99,7 +99,7 @@ function AcceptInviteForm() {
       
       if (response.ok) {
         toast({ title: "Success!", description: "Your account has been created. You can now sign in." });
-        setTimeout(() => router.push('/auth/signin'), 1500); // Give toast time to display
+        setTimeout(() => router.push('/auth/signin' as any), 1500); // Give toast time to display
       } else {
         toast({ 
           title: "Error", 

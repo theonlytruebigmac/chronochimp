@@ -10,6 +10,7 @@ export interface ApiKey {
   id: string;
   name: string;
   hashedKey: string;
+  keyPrefix: string; // First few characters of the key
   last4: string;
   fullKey?: string; // Only for immediate display after creation
   createdAt: string;
@@ -145,6 +146,7 @@ export async function POST(request: NextRequest) {
     crypto.getRandomValues(array);
     const keyHash = Array.from(array, byte => byte.toString(16).padStart(2, '0')).join('');
     const fullKey = keyHash;
+    const keyPrefix = keyHash.slice(0, 8);
     const last4 = keyHash.slice(-4);
     
     // Hash the API key for storage
@@ -152,8 +154,8 @@ export async function POST(request: NextRequest) {
 
     // Store the API key in the database
     const stmt = db.prepare(`
-      INSERT INTO api_keys (id, userId, name, hashedKey, last4, createdAt, expiresAt)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO api_keys (id, userId, name, hashedKey, keyPrefix, last4, createdAt, expiresAt)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `);
     
     stmt.run(
@@ -161,6 +163,7 @@ export async function POST(request: NextRequest) {
       userId,
       name.trim(),
       hashedKey,
+      keyPrefix,
       last4,
       createdAtIso,
       expiresAtIso
@@ -170,6 +173,7 @@ export async function POST(request: NextRequest) {
       id: newApiKeyId,
       name: name.trim(),
       hashedKey,
+      keyPrefix,
       last4,
       fullKey, // Only returned once during creation
       createdAt: createdAtIso,
