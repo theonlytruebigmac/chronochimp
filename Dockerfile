@@ -12,13 +12,11 @@ RUN apt-get update && apt-get install -y \
     g++ \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy configuration files first
+# Copy package files first
 COPY package*.json ./
-COPY tsconfig.json ./
-COPY next.config.ts ./
-COPY tailwind.config.ts ./
-COPY postcss.config.mjs ./
-COPY components.json ./
+
+# Copy configuration files
+COPY . .
 
 # Install dependencies
 RUN npm install --production=false

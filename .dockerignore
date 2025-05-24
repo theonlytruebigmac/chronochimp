@@ -47,8 +47,19 @@ docker-compose*.yml
 .dockerignore
 
 # Documentation
-*.md
 documentation/
+LICENSE.md
+CONTRIBUTING.md
+CHANGELOG.md
+
+# Keep important config files
+!next.config.ts
+!tsconfig.json
+!tailwind.config.ts
+!postcss.config.mjs
+!components.json
+!package.json
+!package-lock.json
 
 # Development configs
 *.config.js
