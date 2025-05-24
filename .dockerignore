@@ -46,6 +46,7 @@ build
 # Docker
 docker-compose*.yml
 .dockerignore
+!docker/entrypoint.sh
 
 # Temporary files
 *.log

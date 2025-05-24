@@ -90,13 +90,14 @@ COPY --from=builder /app/node_modules/better-sqlite3 ./node_modules/better-sqlit
 COPY --from=builder /app/.env* ./
 
 # Create necessary directories with correct permissions
-RUN mkdir -p .data .next/cache && \
+RUN mkdir -p .data .next/cache /usr/local/bin && \
     chown -R nextjs:nodejs . && \
     chmod -R 755 .next
 
 # Copy and set up entrypoint script
-COPY docker/entrypoint.sh /usr/local/bin/
-RUN chmod +x /usr/local/bin/entrypoint.sh
+COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chown nextjs:nodejs /usr/local/bin/entrypoint.sh && \
+    chmod +x /usr/local/bin/entrypoint.sh
 
 # Switch to non-root user
 USER nextjs
@@ -105,5 +106,5 @@ USER nextjs
 EXPOSE 3000
 
 # Set entrypoint and default command
-ENTRYPOINT ["entrypoint.sh"]
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 CMD ["node", "server.js"]
