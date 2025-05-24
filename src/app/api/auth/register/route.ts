@@ -27,7 +27,7 @@ export async function POST(request: Request) {
     const { name, email, password } = validationResult.data;
 
     // Check if user already exists
-    const existingUser = safeQuery('SELECT id FROM users WHERE email = ?', [email]);
+    const existingUser = safeQuery<{ id: string }>('SELECT id FROM users WHERE email = ?', [email]);
 
     if (existingUser) {
       return NextResponse.json({ error: 'Email address is already in use.' }, { status: 409 });
@@ -85,7 +85,7 @@ export async function POST(request: Request) {
     }
   } catch (error: any) {
     console.error('Registration failed:', error);
-    return NextResponse.json({ error: 'Failed to register user. Please try again later.' }, { status: 500 });
+    return NextResponse.json({ error: error.message || 'Registration failed.' }, { status: 500 });
   }
 }
 
