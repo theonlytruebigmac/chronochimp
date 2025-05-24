@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { db, safeQuery } from '@/lib/db';
+import { db } from '@/lib/db';
 import bcrypt from 'bcrypt';
 import { randomUUID } from 'crypto';
 import type { UserRole } from '@/app/admin/page';
@@ -27,7 +27,7 @@ export async function POST(request: Request) {
     const { name, email, password } = validationResult.data;
 
     // Check if user already exists
-    const existingUser = safeQuery<{ id: string }>('SELECT id FROM users WHERE email = ?', [email]);
+    const existingUser = db.prepare('SELECT id FROM users WHERE email = ?').get(email);
 
     if (existingUser) {
       return NextResponse.json({ error: 'Email address is already in use.' }, { status: 409 });
@@ -40,14 +40,14 @@ export async function POST(request: Request) {
     // Determine role with better error handling
     let role: UserRole = 'Viewer'; // Default role
     try {
-      const result = safeQuery<{ count: number }>('SELECT COUNT(*) as count FROM users');
+      const result = db.prepare('SELECT COUNT(*) as count FROM users').get() as { count: number };
       role = result?.count === 0 ? 'Admin' : 'Viewer';
       console.log(`Determined role for new user: ${role} (user count: ${result?.count})`);
     } catch (error) {
       console.error('Error getting user count:', error);
       // If we can't get a count, fall back to checking if any users exist
       try {
-        const anyUser = safeQuery('SELECT 1 FROM users LIMIT 1');
+        const anyUser = db.prepare('SELECT 1 FROM users LIMIT 1').get();
         role = anyUser ? 'Viewer' : 'Admin';
         console.log(`Fallback role determination: ${role}`);
       } catch (innerError) {
