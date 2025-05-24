@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { db, safeQuery, safeQueryAll, safeExecute } from '@/lib/db';
+import { db } from '@/lib/db';
+import { safeQuery, safeQueryAll, safeExecute } from '@/lib/db';
 import bcrypt from 'bcrypt';
 import { randomUUID } from 'crypto';
 import type { UserRole } from '@/app/admin/page';

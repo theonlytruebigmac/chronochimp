@@ -1,5 +1,6 @@
 import { NextResponse, NextRequest } from 'next/server';
-import { db, safeQuery } from '@/lib/db';
+import { db } from '@/lib/db';
+import { safeQuery, safeQueryAll, safeExecute } from '@/lib/db';
 import bcrypt from 'bcrypt';
 import { SignJWT } from 'jose';
 
