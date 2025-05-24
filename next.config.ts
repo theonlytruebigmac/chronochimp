@@ -1,22 +1,27 @@
 import type { NextConfig } from 'next';
+import { join } from 'path';
 import type { Configuration as WebpackConfig } from 'webpack';
-import path from 'path';
 
 const nextConfig: NextConfig = {
-  /* config options here */
-  output: 'standalone', // Required for optimized Docker images
+  output: 'standalone',
   typescript: {
     ignoreBuildErrors: true,
   },
   eslint: {
     ignoreDuringBuilds: true,
   },
+  experimental: {
+    // These features help with module resolution and optimization
+    typedRoutes: true,
+    serverComponentsExternalPackages: [],
+    optimizePackageImports: ['@radix-ui/react-slot'],
+  },
   webpack: (config: WebpackConfig) => {
     config.resolve = {
       ...config.resolve,
       alias: {
         ...config.resolve?.alias,
-        '@': path.join(__dirname, 'src'),
+        '@': join(__dirname, 'src'),
       },
     };
     return config;
