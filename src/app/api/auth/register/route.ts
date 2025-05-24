@@ -40,19 +40,23 @@ export async function POST(request: Request) {
     // Determine role with better error handling
     let role: UserRole = 'Viewer'; // Default role
     try {
-      const result = db.prepare('SELECT COUNT(*) as count FROM users').get() as { count: number };
-      role = result?.count === 0 ? 'Admin' : 'Viewer';
-      console.log(`Determined role for new user: ${role} (user count: ${result?.count})`);
+      const stmt = db.prepare('SELECT COUNT(*) as count FROM users');
+      const result = stmt.get();
+      const userCount = result ? (result as { count: number }).count : 0;
+      role = userCount === 0 ? 'Admin' : 'Viewer';
+      console.log(`Determined role for new user: ${role} (user count: ${userCount})`);
     } catch (error) {
       console.error('Error getting user count:', error);
       // If we can't get a count, fall back to checking if any users exist
       try {
-        const anyUser = db.prepare('SELECT 1 FROM users LIMIT 1').get();
+        const stmt = db.prepare('SELECT 1 FROM users LIMIT 1');
+        const anyUser = stmt.get();
         role = anyUser ? 'Viewer' : 'Admin';
         console.log(`Fallback role determination: ${role}`);
       } catch (innerError) {
         console.error('Error checking for any users:', innerError);
-        // Keep the default 'Viewer' role
+        role = 'Admin'; // If all else fails, make the user an Admin since we can't verify
+        console.log('Fallback to Admin role due to database error');
       }
     }
 
