@@ -139,8 +139,8 @@ function initDatabase() {
 
 export const db = initDatabase();
 
-// Create database schema if we're not in build mode
-if (!shouldSkipDb) {
+// Create database schema if we're not in build mode and we're in a Node.js environment
+if (!shouldSkipDb && (process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'production')) {
   try {
     console.log('Initializing database schema...');
     
